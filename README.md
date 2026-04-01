@@ -53,6 +53,13 @@ cargo run -- --help
 | `dam web`      | Launch OpenCode web application                              |
 | `dam debug`    | Peek behind the curtain                                      |
 
+## Mounts
+
+When you run a container, DAM automatically mounts your OpenCode config directory to load your settings:
+
+- **Host:** `~/.config/opencode`
+- **Container:** `/root/.config/opencode`
+
 ## Quick Start
 
 ```bash
