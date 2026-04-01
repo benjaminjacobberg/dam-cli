@@ -10,12 +10,10 @@ use std::sync::Arc;
 pub fn cmd_run(docker: Arc<dyn DockerClient>) -> Result<()> {
     let container = presets::interactive();
 
-    println!(
-        "{} Mounting {} -> /{}",
-        "Starting container:".yellow(),
-        container.volume_host_path.display(),
-        container.volume_container_path.display()
-    );
+    println!("{}", "Starting container:".yellow());
+    for (host, container_path) in &container.volume_mounts {
+        println!("  Mounting {} -> /{}", host.display(), container_path.display());
+    }
 
     let status = docker.run_interactive(
         &container.image,
@@ -37,12 +35,10 @@ pub fn cmd_run(docker: Arc<dyn DockerClient>) -> Result<()> {
 pub fn cmd_acp(docker: Arc<dyn DockerClient>) -> Result<()> {
     let container = presets::acp_server();
 
-    println!(
-        "{} Mounting {} -> /{}",
-        "Starting ACP server:".yellow(),
-        container.volume_host_path.display(),
-        container.volume_container_path.display()
-    );
+    println!("{}", "Starting ACP server:".yellow());
+    for (host, container_path) in &container.volume_mounts {
+        println!("  Mounting {} -> /{}", host.display(), container_path.display());
+    }
 
     docker.run_detached(
         &container.image,

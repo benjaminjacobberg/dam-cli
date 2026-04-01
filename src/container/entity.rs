@@ -26,10 +26,8 @@ pub struct Container {
     pub name: Option<String>,
     /// Image to run.
     pub image: String,
-    /// Host path to mount.
-    pub volume_host_path: PathBuf,
-    /// Container path to mount at.
-    pub volume_container_path: PathBuf,
+    /// Volume mounts pairs: (host_path, container_path).
+    pub volume_mounts: Vec<(PathBuf, PathBuf)>,
     /// Working directory inside the container.
     pub workdir: PathBuf,
     /// Command to execute.
@@ -49,14 +47,21 @@ impl Container {
             .unwrap_or("app")
             .to_string();
 
+        let container_path = PathBuf::from(format!("/{}", container_dir));
+
         Self {
             name: None,
             image: image.into(),
-            volume_host_path,
-            volume_container_path: PathBuf::from(format!("/{}", container_dir)),
-            workdir: PathBuf::from(format!("/{}", container_dir)),
+            volume_mounts: vec![(volume_host_path, container_path.clone())],
+            workdir: container_path,
             cmd: Vec::new(),
         }
+    }
+
+    /// Add an additional volume mount.
+    pub fn with_volume_mount(mut self, host_path: PathBuf, container_path: PathBuf) -> Self {
+        self.volume_mounts.push((host_path, container_path));
+        self
     }
 
     /// Set the container name.
@@ -73,10 +78,15 @@ impl Container {
 
     /// Get volume mounts as tuples.
     pub fn volume_mounts(&self) -> Vec<(&str, &str)> {
-        vec![(
-            self.volume_host_path.to_str().unwrap_or("."),
-            self.volume_container_path.to_str().unwrap_or("/app"),
-        )]
+        self.volume_mounts
+            .iter()
+            .filter_map(|(host, container)| {
+                Some((
+                    host.to_str().unwrap_or("."),
+                    container.to_str().unwrap_or("/app"),
+                ))
+            })
+            .collect()
     }
 
     /// Get command as string slices.
@@ -93,30 +103,59 @@ pub const OPENCODE_BIN: &str = "/root/.opencode/bin/opencode";
 pub mod presets {
     use super::*;
 
+    /// Get the OpenCode config directory path (~/.config/opencode).
+    fn opencode_config_dir() -> Option<PathBuf> {
+        dirs::home_dir().map(|h| h.join(".config/opencode"))
+    }
+
     /// Create an interactive run container.
     pub fn interactive() -> Container {
-        Container::new(
+        let mut container = Container::new(
             DEFAULT_CONTAINER_IMAGE,
             std::env::current_dir().ok().unwrap_or_default(),
             "",
         )
-        .with_command(vec![OPENCODE_BIN.to_string()])
+        .with_command(vec![OPENCODE_BIN.to_string()]);
+
+        // Auto-mount ~/.config/opencode if it exists on the host
+        if let Some(config_dir) = opencode_config_dir() {
+            if config_dir.exists() {
+                container = container.with_volume_mount(
+                    config_dir,
+                    PathBuf::from("/root/.config/opencode"),
+                );
+            }
+        }
+
+        container
     }
 
     /// Create an ACP server container.
     pub fn acp_server() -> Container {
-        Container::new(
+        let mut container = Container::new(
             DEFAULT_CONTAINER_IMAGE,
             std::env::current_dir().ok().unwrap_or_default(),
             "",
         )
         .with_name("dam-acp")
-        .with_command(vec![OPENCODE_BIN.to_string(), "acp".to_string()])
+        .with_command(vec![OPENCODE_BIN.to_string(), "acp".to_string()]);
+
+        // Auto-mount ~/.config/opencode if it exists on the host
+        if let Some(config_dir) = opencode_config_dir() {
+            if config_dir.exists() {
+                container = container.with_volume_mount(
+                    config_dir,
+                    PathBuf::from("/root/.config/opencode"),
+                );
+            }
+        }
+
+        container
     }
 
     /// Create a web server container.
     pub fn web_server() -> Container {
-        Container::new(
+        let mut container = Container::new(
             DEFAULT_CONTAINER_IMAGE,
             std::env::current_dir().ok().unwrap_or_default(),
             "",
@@ -129,7 +168,19 @@ pub mod presets {
             "4096".to_string(),
             "--hostname".to_string(),
             "0.0.0.0".to_string(),
-        ])
+        ]);
+
+        // Auto-mount ~/.config/opencode if it exists on the host
+        if let Some(config_dir) = opencode_config_dir() {
+            if config_dir.exists() {
+                container = container.with_volume_mount(
+                    config_dir,
+                    PathBuf::from("/root/.config/opencode"),
+                );
+            }
+        }
+
+        container
     }
 }
 
@@ -143,7 +194,8 @@ mod tests {
         let container = Container::new("test-image", PathBuf::from("/host/path"), "");
 
         assert_eq!(container.image, "test-image");
-        assert_eq!(container.volume_host_path, PathBuf::from("/host/path"));
+        assert_eq!(container.volume_mounts.len(), 1);
+        assert_eq!(container.volume_mounts[0].0, PathBuf::from("/host/path"));
         assert!(container.name.is_none());
     }
 
@@ -182,6 +234,31 @@ mod tests {
             "container path '{}' must be absolute",
             mounts[0].1
         );
+    }
+
+    #[test]
+    fn test_with_volume_mount_adds_multiple_volumes() {
+        let container = Container::new("img", PathBuf::from("/host/app"), "")
+            .with_volume_mount(PathBuf::from("/extra/data"), PathBuf::from("/data"));
+
+        assert_eq!(container.volume_mounts.len(), 2);
+        assert_eq!(container.volume_mounts[0].0, PathBuf::from("/host/app"));
+        assert_eq!(container.volume_mounts[1].0, PathBuf::from("/extra/data"));
+        assert_eq!(container.volume_mounts[1].1, PathBuf::from("/data"));
+    }
+
+    #[test]
+    fn test_volume_mounts_returns_all_entry_strings() {
+        let container = Container::new("img", PathBuf::from("/host/app"), "")
+            .with_volume_mount(PathBuf::from("/config"), PathBuf::from("/root/config"));
+
+        let mount = container.volume_mounts();
+
+        assert_eq!(mount.len(), 2);
+        assert_eq!(mount[0].0, "/host/app");
+        assert_eq!(mount[0].1, "/app");
+        assert_eq!(mount[1].0, "/config");
+        assert_eq!(mount[1].1, "/root/config");
     }
 
     #[test]
