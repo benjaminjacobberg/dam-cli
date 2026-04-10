@@ -1,6 +1,6 @@
 //! Stack discovery - finds available stacks from the filesystem.
 
-use crate::stack::Stack;
+use crate::domain::entities::Stack;
 use std::path::PathBuf;
 
 /// Discovers available stacks from a directory.

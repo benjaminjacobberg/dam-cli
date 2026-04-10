@@ -55,16 +55,16 @@ fn main() -> Result<()> {
     let dockerfile_path = std::path::Path::new("./Dockerfile").to_path_buf();
     let build_context = std::path::Path::new(".").to_path_buf();
 
-    let handler = dam_cli::CliHandler::new(stacks_path, dockerfile_path, build_context);
+    let service = dam_cli::CliApplicationService::new(stacks_path, dockerfile_path, build_context);
 
     match cli.command {
-        Commands::Build(opts) => handler.build(&opts.stack)?,
-        Commands::Run => handler.run()?,
-        Commands::Acp => handler.acp()?,
-        Commands::Teardown => handler.teardown()?,
-        Commands::Status => handler.status()?,
-        Commands::Debug => handler.debug()?,
-        Commands::Web => handler.web()?,
+        Commands::Build(opts) => service.build(&opts.stack)?,
+        Commands::Run => service.run()?,
+        Commands::Acp => service.acp()?,
+        Commands::Teardown => service.teardown()?,
+        Commands::Status => service.status()?,
+        Commands::Debug => service.debug()?,
+        Commands::Web => service.web()?,
     }
 
     Ok(())

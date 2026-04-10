@@ -3,7 +3,7 @@
 //! # Example
 //!
 //! ```
-//! use dam_cli::stack::Stack;
+//! use dam_cli::domain::entities::Stack;
 //! use std::path::PathBuf;
 //! use std::fs;
 //!

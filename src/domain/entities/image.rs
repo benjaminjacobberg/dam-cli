@@ -3,7 +3,7 @@
 //! # Example
 //!
 //! ```
-//! use dam_cli::image::Image;
+//! use dam_cli::domain::entities::Image;
 //! use std::path::PathBuf;
 //!
 //! let image = Image::new(

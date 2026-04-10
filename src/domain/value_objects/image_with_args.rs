@@ -3,7 +3,8 @@
 //! # Example
 //!
 //! ```
-//! use dam_cli::image::{Image, ImageBuilder};
+//! use dam_cli::domain::entities::Image;
+//! use dam_cli::domain::value_objects::ImageBuilder;
 //! use std::path::PathBuf;
 //!
 //! let image = Image::new("test", PathBuf::from("Dockerfile"), PathBuf::from("."));
@@ -13,7 +14,7 @@
 //! assert_eq!(args, vec![("STACK_SCRIPT", "python")]);
 //! ```
 
-use crate::image::Image;
+use crate::domain::entities::Image;
 
 /// Builds Image configurations with sensible defaults.
 pub struct ImageBuilder;

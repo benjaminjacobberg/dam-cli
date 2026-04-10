@@ -1,43 +1,36 @@
-//! CLI handlers - orchestrate bounded contexts for each CLI command.
+//! CLI application service - orchestrates use cases for CLI commands.
 
-use crate::container::commands as container_commands;
-#[cfg(feature = "testing")]
-pub use crate::docker::StubDockerClient;
-use crate::docker::{CliDockerClient, DockerClient};
-use crate::image::DEFAULT_IMAGE_NAME;
-use crate::image::commands as image_commands;
-use crate::stack::StackDiscovery;
+use crate::adapters::driven::CliDockerAdapter;
+use crate::application::use_cases;
+use crate::domain::entities::DEFAULT_IMAGE_NAME;
+use crate::domain::services::StackDiscovery;
+use crate::ports::outbound::ContainerPort;
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// CLI handler that coordinates between bounded contexts.
-pub struct CliHandler {
-    docker: Arc<dyn DockerClient>,
+/// CLI application service that coordinates between bounded contexts.
+pub struct CliApplicationService {
+    docker: Arc<dyn ContainerPort>,
     stacks: StackDiscovery,
     dockerfile_path: PathBuf,
     build_context: PathBuf,
 }
 
-impl CliHandler {
-    /// Create a new CLI handler with real Docker CLI backend.
-    ///
-    /// # Arguments
-    /// * `stacks_path` - Directory containing stack `.sh` scripts
-    /// * `dockerfile_path` - Path to the Dockerfile
-    /// * `build_context` - Docker build context directory
+impl CliApplicationService {
+    /// Create a new CLI application service with real Docker CLI backend.
     pub fn new(stacks_path: PathBuf, dockerfile_path: PathBuf, build_context: PathBuf) -> Self {
         Self {
-            docker: Arc::new(CliDockerClient::new()),
+            docker: Arc::new(CliDockerAdapter::new()),
             stacks: StackDiscovery::new(stacks_path),
             dockerfile_path,
             build_context,
         }
     }
 
-    /// Create a CliHandler with custom dependencies (useful for testing).
+    /// Create a CliApplicationService with custom dependencies (useful for testing).
     pub fn new_with_deps(
-        docker: Arc<dyn DockerClient>,
+        docker: Arc<dyn ContainerPort>,
         stacks: StackDiscovery,
         dockerfile_path: PathBuf,
         build_context: PathBuf,
@@ -57,7 +50,7 @@ impl CliHandler {
 
     /// Handle the build command.
     pub fn build(&self, stack: &str) -> Result<()> {
-        image_commands::cmd_build(
+        use_cases::build_image(
             self.docker.clone(),
             stack,
             self.dockerfile_path.clone(),
@@ -67,32 +60,32 @@ impl CliHandler {
 
     /// Handle the run command.
     pub fn run(&self) -> Result<()> {
-        container_commands::cmd_run(self.docker.clone())
+        use_cases::run_container(self.docker.clone())
     }
 
     /// Handle the ACP server command.
     pub fn acp(&self) -> Result<()> {
-        container_commands::cmd_acp(self.docker.clone())
+        use_cases::run_acp_server(self.docker.clone())
     }
 
     /// Handle the teardown command.
     pub fn teardown(&self) -> Result<()> {
-        container_commands::cmd_teardown(self.docker.clone(), DEFAULT_IMAGE_NAME)
+        use_cases::teardown(self.docker.clone(), DEFAULT_IMAGE_NAME)
     }
 
     /// Handle the status command.
     pub fn status(&self) -> Result<()> {
-        container_commands::cmd_status(self.docker.clone(), DEFAULT_IMAGE_NAME)
+        use_cases::status(self.docker.clone(), DEFAULT_IMAGE_NAME)
     }
 
     /// Handle the debug command.
     pub fn debug(&self) -> Result<()> {
-        container_commands::cmd_debug()
+        use_cases::debug()
     }
 
     /// Handle the web command.
     pub fn web(&self) -> Result<()> {
-        container_commands::cmd_web(self.docker.clone())
+        use_cases::run_web_server(self.docker.clone())
     }
 }
 
@@ -102,67 +95,70 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_handler_new() {
+    fn test_service_new() {
         let temp_dir = TempDir::new().unwrap();
-        let handler = CliHandler::new(
+        let service = CliApplicationService::new(
             temp_dir.path().to_path_buf(),
             temp_dir.path().join("Dockerfile"),
             temp_dir.path().to_path_buf(),
         );
 
-        // Verify fields are populated correctly
-        assert_eq!(handler.dockerfile_path, temp_dir.path().join("Dockerfile"));
-        assert_eq!(handler.build_context, temp_dir.path());
+        assert_eq!(service.dockerfile_path, temp_dir.path().join("Dockerfile"));
+        assert_eq!(service.build_context, temp_dir.path());
     }
 
     #[test]
-    fn test_handler_get_stacks_help_empty() {
+    fn test_service_get_stacks_help_empty() {
         let temp_dir = TempDir::new().unwrap();
-        let handler = CliHandler::new(
+        let service = CliApplicationService::new(
             temp_dir.path().to_path_buf(),
             temp_dir.path().join("Dockerfile"),
             temp_dir.path().to_path_buf(),
         );
 
-        let help = handler.get_stacks_help();
+        let help = service.get_stacks_help();
         assert!(help.contains("none"));
     }
 
     #[cfg(all(test, feature = "testing"))]
     #[test]
-    fn test_handler_new_with_deps() {
+    fn test_service_new_with_deps() {
+        use crate::adapters::driven::test::StubDockerAdapter;
+        use std::sync::Arc;
+
         let temp_dir = TempDir::new().unwrap();
         let stacks = StackDiscovery::new(temp_dir.path().to_path_buf());
-        let docker: Arc<dyn DockerClient> = Arc::new(StubDockerClient::new());
+        let docker: Arc<dyn ContainerPort> = Arc::new(StubDockerAdapter::new());
 
-        let handler = CliHandler::new_with_deps(
+        let service = CliApplicationService::new_with_deps(
             docker.clone(),
             stacks,
             temp_dir.path().join("Dockerfile"),
             temp_dir.path().to_path_buf(),
         );
 
-        assert_eq!(handler.dockerfile_path, temp_dir.path().join("Dockerfile"));
+        assert_eq!(service.dockerfile_path, temp_dir.path().join("Dockerfile"));
     }
 
     #[cfg(all(test, feature = "testing"))]
     #[test]
-    fn test_handler_build_wires_up() {
+    fn test_service_build_wires_up() {
+        use crate::adapters::driven::test::StubDockerAdapter;
+        use std::sync::Arc;
+
         let temp_dir = TempDir::new().unwrap();
         let stacks = StackDiscovery::new(temp_dir.path().to_path_buf());
-        // Use stub that will fail to simulate error condition
-        let stub = StubDockerClient::new().with_build_error("Simulated build error");
-        let docker: Arc<dyn DockerClient> = Arc::new(stub);
+        let stub = StubDockerAdapter::new().with_build_error("Simulated build error");
+        let docker: Arc<dyn ContainerPort> = Arc::new(stub);
 
-        let handler = CliHandler::new_with_deps(
+        let service = CliApplicationService::new_with_deps(
             docker.clone(),
             stacks,
             temp_dir.path().join("Dockerfile"),
             temp_dir.path().to_path_buf(),
         );
 
-        // Should fail with our simulated error
-        let result = handler.build("test-stack");
+        let result = service.build("test-stack");
         assert!(result.is_err());
     }
 }

@@ -1,18 +1,22 @@
-//! Container commands - handlers for container-related CLI commands.
+//! Run container use cases.
 
-use crate::container::presets;
-use crate::docker::DockerClient;
+use crate::domain::presets;
+use crate::ports::outbound::ContainerPort;
 use anyhow::Result;
 use colored::Colorize;
 use std::sync::Arc;
 
 /// Handle the run command - interactive container.
-pub fn cmd_run(docker: Arc<dyn DockerClient>) -> Result<()> {
+pub fn run_container(docker: Arc<dyn ContainerPort>) -> Result<()> {
     let container = presets::interactive();
 
     println!("{}", "Starting container:".yellow());
     for (host, container_path) in &container.volume_mounts {
-        println!("  Mounting {} -> /{}", host.display(), container_path.display());
+        println!(
+            "  Mounting {} -> /{}",
+            host.display(),
+            container_path.display()
+        );
     }
 
     let status = docker.run_interactive(
@@ -32,12 +36,16 @@ pub fn cmd_run(docker: Arc<dyn DockerClient>) -> Result<()> {
 }
 
 /// Handle the ACP server command.
-pub fn cmd_acp(docker: Arc<dyn DockerClient>) -> Result<()> {
+pub fn run_acp_server(docker: Arc<dyn ContainerPort>) -> Result<()> {
     let container = presets::acp_server();
 
     println!("{}", "Starting ACP server:".yellow());
     for (host, container_path) in &container.volume_mounts {
-        println!("  Mounting {} -> /{}", host.display(), container_path.display());
+        println!(
+            "  Mounting {} -> /{}",
+            host.display(),
+            container_path.display()
+        );
     }
 
     docker.run_detached(
@@ -59,7 +67,7 @@ pub fn cmd_acp(docker: Arc<dyn DockerClient>) -> Result<()> {
 }
 
 /// Handle the web server command.
-pub fn cmd_web(docker: Arc<dyn DockerClient>) -> Result<()> {
+pub fn run_web_server(docker: Arc<dyn ContainerPort>) -> Result<()> {
     let container = presets::web_server();
 
     println!(
@@ -99,7 +107,7 @@ pub fn cmd_web(docker: Arc<dyn DockerClient>) -> Result<()> {
 }
 
 /// Handle the teardown command.
-pub fn cmd_teardown(docker: Arc<dyn DockerClient>, image_name: &str) -> Result<()> {
+pub fn teardown(docker: Arc<dyn ContainerPort>, image_name: &str) -> Result<()> {
     println!("{}", "Finding running container...".yellow());
 
     let containers = docker.list_containers(image_name)?;
@@ -121,7 +129,7 @@ pub fn cmd_teardown(docker: Arc<dyn DockerClient>, image_name: &str) -> Result<(
 }
 
 /// Handle the status command.
-pub fn cmd_status(docker: Arc<dyn DockerClient>, image_name: &str) -> Result<()> {
+pub fn status(docker: Arc<dyn ContainerPort>, image_name: &str) -> Result<()> {
     let containers = docker.list_containers(image_name)?;
 
     if containers.is_empty() {
@@ -137,7 +145,7 @@ pub fn cmd_status(docker: Arc<dyn DockerClient>, image_name: &str) -> Result<()>
 }
 
 /// Handle the debug command.
-pub fn cmd_debug() -> Result<()> {
+pub fn debug() -> Result<()> {
     let cwd = std::env::current_dir()?;
     println!("Loaded directory: {}", cwd.display());
     Ok(())
@@ -146,57 +154,55 @@ pub fn cmd_debug() -> Result<()> {
 #[cfg(all(test, feature = "testing"))]
 mod tests {
     use super::*;
-    use crate::docker::{ContainerInfo, StubDockerClient};
+    use crate::adapters::driven::test::StubDockerAdapter;
+    use crate::ports::outbound::ContainerInfo;
     use std::sync::Arc;
 
     #[test]
-    fn test_cmd_teardown_no_containers() {
-        let stub = StubDockerClient::new().with_list_containers(vec![]);
-        let docker: Arc<dyn DockerClient> = Arc::new(stub);
+    fn test_teardown_no_containers() {
+        let stub = StubDockerAdapter::new().with_list_containers(vec![]);
+        let docker: Arc<dyn ContainerPort> = Arc::new(stub);
 
-        // Should return Ok even with no containers
-        let result = cmd_teardown(docker, "test-image");
+        let result = teardown(docker, "test-image");
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_cmd_teardown_with_containers() {
-        let stub = StubDockerClient::new().with_list_containers(vec![ContainerInfo {
+    fn test_teardown_with_containers() {
+        let stub = StubDockerAdapter::new().with_list_containers(vec![ContainerInfo {
             id: "abcdef123456".to_string(),
             status: "Up".to_string(),
         }]);
-        let docker: Arc<dyn DockerClient> = Arc::new(stub);
+        let docker: Arc<dyn ContainerPort> = Arc::new(stub);
 
-        let result = cmd_teardown(docker, "test-image");
+        let result = teardown(docker, "test-image");
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_cmd_status_no_containers() {
-        let stub = StubDockerClient::new().with_list_containers(vec![]);
-        let docker: Arc<dyn DockerClient> = Arc::new(stub);
+    fn test_status_no_containers() {
+        let stub = StubDockerAdapter::new().with_list_containers(vec![]);
+        let docker: Arc<dyn ContainerPort> = Arc::new(stub);
 
-        let result = cmd_status(docker, "test-image");
+        let result = status(docker, "test-image");
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_cmd_status_with_containers() {
-        let stub = StubDockerClient::new().with_list_containers(vec![ContainerInfo {
+    fn test_status_with_containers() {
+        let stub = StubDockerAdapter::new().with_list_containers(vec![ContainerInfo {
             id: "abc123def456".to_string(),
             status: "Up 2 hours".to_string(),
         }]);
-        let docker: Arc<dyn DockerClient> = Arc::new(stub);
+        let docker: Arc<dyn ContainerPort> = Arc::new(stub);
 
-        let result = cmd_status(docker, "test-image");
+        let result = status(docker, "test-image");
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_cmd_debug_current_dir() {
-        // Just verify this doesn't panic
-        let result = cmd_debug();
-        // May fail if we can't determine current dir in test, but shouldn't crash
+    fn test_debug_current_dir() {
+        let result = debug();
         assert!(result.is_ok() || result.is_err());
     }
 }

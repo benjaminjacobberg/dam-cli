@@ -51,15 +51,24 @@ cargo audit                       # Check for vulnerabilities (if installed)
 
 ### Module Organization
 
+The project uses **Hexagonal Architecture** (Ports and Adapters):
+
 ```
 src/
-├── cli/           # CLI parsing and command handlers
-├── container/     # Container entity and commands
-├── docker/        # Docker client abstraction
-├── image/         # Image entity and builders
-├── stack/         # Stack discovery and entities
-├── main.rs        # Entry point and argument parsing
-└── lib.rs         # Library root with public exports
+├── adapters/          # Driven adapters (implementations)
+│   └── driven/        # Concrete implementations (Docker CLI, tests)
+├── application/       # Application layer
+│   ├── services/      # Application services
+│   └── use_cases/     # Use case handlers
+├── domain/            # Domain layer
+│   ├── entities/      # Domain entities
+│   ├── presets/       # Stack/image presets
+│   ├── services/      # Domain services
+│   └── value_objects/ # Value objects
+├── ports/             # Port interfaces (traits)
+│   └── outbound/      # Outbound port traits
+├── main.rs            # Entry point
+└── lib.rs             # Library root with public exports
 ```
 
 ### Error Handling

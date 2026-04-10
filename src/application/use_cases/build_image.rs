@@ -1,15 +1,17 @@
-//! Image commands - handlers for image-related CLI commands.
+//! Build image use case.
 
-use crate::docker::DockerClient;
-use crate::image::{DEFAULT_IMAGE_NAME, Image, ImageBuilder};
+use crate::domain::entities::DEFAULT_IMAGE_NAME;
+use crate::domain::entities::Image;
+use crate::domain::value_objects::ImageBuilder;
+use crate::ports::outbound::ContainerPort;
 use anyhow::Result;
 use colored::Colorize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Handle the build command.
-pub fn cmd_build(
-    docker: Arc<dyn DockerClient>,
+pub fn build_image(
+    docker: Arc<dyn ContainerPort>,
     stack: &str,
     dockerfile_path: PathBuf,
     build_context: PathBuf,
@@ -43,24 +45,22 @@ pub fn cmd_build(
 #[cfg(all(test, feature = "testing"))]
 mod tests {
     use super::*;
-    use crate::docker::StubDockerClient;
+    use crate::adapters::driven::test::StubDockerAdapter;
     use std::sync::Arc;
 
     #[test]
-    fn test_cmd_build_wires_up_correctly() {
-        // Test that build wires up the Docker client properly by checking call captures
-        let stub = StubDockerClient::new().with_build_error("Simulated build failure");
-        let docker: Arc<dyn DockerClient> = Arc::new(stub);
+    fn test_build_image_wires_up_correctly() {
+        let stub = StubDockerAdapter::new().with_build_error("Simulated build failure");
+        let docker: Arc<dyn ContainerPort> = Arc::new(stub);
 
         let temp_dir = std::env::temp_dir();
-        let result = cmd_build(
+        let result = build_image(
             docker,
             "test-stack",
             temp_dir.join("nonexistent/Dockerfile"),
             temp_dir,
         );
 
-        // With our mocked error, this should fail
         assert!(result.is_err());
     }
 }
